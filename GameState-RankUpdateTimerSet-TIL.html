@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UE5 멀티플레이 타이머와 전투정보 복제 최적화</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111c33;
+      --panel-soft: #17233d;
+      --text: #e5e7eb;
+      --muted: #a8b2c3;
+      --accent: #60a5fa;
+      --accent-soft: rgba(96, 165, 250, 0.12);
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #fb7185;
+      --border: #2b3a55;
+      --code: #09111f;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(96,165,250,.10), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Pretendard, "Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      line-height: 1.75;
+    }
+
+    .layout {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 56px 0 96px;
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 36px;
+    }
+
+    aside {
+      position: sticky;
+      top: 24px;
+      align-self: start;
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(17, 28, 51, .86);
+      backdrop-filter: blur(12px);
+    }
+
+    aside strong {
+      display: block;
+      margin-bottom: 12px;
+      font-size: 15px;
+    }
+
+    aside a {
+      display: block;
+      padding: 7px 0;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    aside a:hover { color: var(--accent); }
+
+    main { min-width: 0; }
+
+    header {
+      padding: 34px;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: linear-gradient(145deg, rgba(23,35,61,.96), rgba(17,28,51,.92));
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-size: 13px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(30px, 5vw, 48px);
+      line-height: 1.25;
+      letter-spacing: -.03em;
+    }
+
+    .subtitle {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    section {
+      margin-top: 24px;
+      padding: 28px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: rgba(17, 28, 51, .78);
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 25px;
+      line-height: 1.35;
+    }
+
+    h3 {
+      margin: 28px 0 10px;
+      font-size: 18px;
+      color: #dbeafe;
+    }
+
+    p { margin: 10px 0; }
+
+    ul, ol { padding-left: 22px; }
+
+    li + li { margin-top: 6px; }
+
+    code {
+      color: #bfdbfe;
+      font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    }
+
+    pre {
+      overflow-x: auto;
+      margin: 18px 0;
+      padding: 18px;
+      border: 1px solid #253554;
+      border-radius: 14px;
+      background: var(--code);
+      color: #dbeafe;
+      line-height: 1.65;
+      font-size: 14px;
+    }
+
+    pre code { color: inherit; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .summary-card {
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel-soft);
+    }
+
+    .summary-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .summary-card strong {
+      display: block;
+      margin-top: 7px;
+      color: var(--text);
+      font-size: 17px;
+    }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .flow-item {
+      position: relative;
+      padding: 14px 16px 14px 46px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--panel-soft);
+    }
+
+    .flow-item::before {
+      content: attr(data-step);
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #07111f;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .callout {
+      margin: 18px 0;
+      padding: 16px 18px;
+      border-left: 4px solid var(--accent);
+      border-radius: 0 12px 12px 0;
+      background: var(--accent-soft);
+    }
+
+    .callout.warning {
+      border-left-color: var(--yellow);
+      background: rgba(251, 191, 36, .10);
+    }
+
+    .callout.success {
+      border-left-color: var(--green);
+      background: rgba(52, 211, 153, .10);
+    }
+
+    .compare {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 18px;
+      font-size: 14px;
+    }
+
+    .compare th, .compare td {
+      padding: 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .compare th {
+      color: #dbeafe;
+      background: rgba(23,35,61,.7);
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 3px 9px;
+      margin-right: 6px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .footer-note {
+      margin-top: 28px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media (max-width: 880px) {
+      .layout { grid-template-columns: 1fr; }
+      aside { position: static; }
+      .summary-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 560px) {
+      .layout {
+        width: min(100% - 20px, 1120px);
+        padding-top: 20px;
+      }
+      header, section { padding: 21px; }
+      h1 { font-size: 31px; }
+      .compare { font-size: 13px; }
+      .compare th, .compare td { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <strong>목차</strong>
+      <a href="#overview">1. 오늘 구현한 내용</a>
+      <a href="#timer">2. 서버 시간 기반 타이머</a>
+      <a href="#states">3. GameState 상태 분기</a>
+      <a href="#combat">4. 전투정보 수집</a>
+      <a href="#problem">5. Replication 문제</a>
+      <a href="#snapshot">6. 복제용 스냅샷</a>
+      <a href="#final-flow">7. 최종 동작 흐름</a>
+      <a href="#learned">8. 배운 점</a>
+    </aside>
+
+    <main>
+      <header>
+        <p class="eyebrow">Today I Learned · Unreal Engine 5 Multiplayer</p>
+        <h1>GameState 타이머와<br />전투정보 복제 최적화</h1>
+        <p class="subtitle">
+          서버 시간 기반 타이머를 클라이언트 UI에 표시하고,
+          실시간 전투 데이터를 복제용 스냅샷으로 분리하여 네트워크 갱신 빈도를 제어한 과정
+        </p>
+
+        <div class="summary-grid">
+          <div class="summary-card">
+            <span>게임 상태</span>
+            <strong>Lobby / Playing</strong>
+          </div>
+          <div class="summary-card">
+            <span>UI 갱신 주기</span>
+            <strong>0.1초</strong>
+          </div>
+          <div class="summary-card">
+            <span>핵심 구조</span>
+            <strong>Runtime + Snapshot</strong>
+          </div>
+        </div>
+      </header>
+
+      <section id="overview">
+        <h2>1. 오늘 구현한 내용</h2>
+        <p>
+          GameState의 상태를 나누고, 각 상태에 맞는 제한 시간을 설정했다.
+          서버에서는 타이머의 기준이 되는 시작 시간과 종료 시간을 관리하고,
+          클라이언트에서는 복제받은 시간 정보를 이용해 남은 시간을 계산한다.
+        </p>
+        <p>
+          이후 플레이어의 데미지, 킬, 아이템 획득, 생존 시간 등을 수집하는
+          전투정보 구조체를 만들었다. 이 과정에서 연발 사격처럼 값이 매우 자주 변경되는 데이터를
+          그대로 복제하면 갱신 빈도가 높아질 수 있다는 문제를 발견했다.
+        </p>
+      </section>
+
+      <section id="timer">
+        <h2>2. 서버 시간 기반 타이머</h2>
+
+        <h3>서버가 정의하는 값</h3>
+        <p>서버는 상태가 지속될 시간의 길이를 정한다.</p>
+
+        <pre><code>// 예: 게임을 50초 동안 진행
+const float Duration = 50.0f;</code></pre>
+
+        <p>GameState에는 시간 정보를 담는 구조체를 선언하고 복제한다.</p>
+
+        <pre><code>USTRUCT(BlueprintType)
+struct FPhaseTimerData
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    float StartServerTime = 0.0f;
+
+    UPROPERTY()
+    float Duration = 0.0f;
+
+    UPROPERTY()
+    float EndServerTime = 0.0f;
+};
+
+UPROPERTY(ReplicatedUsing = OnRep_PhaseTimerData)
+FPhaseTimerData PhaseTimerData;</code></pre>
+
+        <h3>클라이언트 UI 갱신</h3>
+        <div class="flow">
+          <div class="flow-item" data-step="1">클라이언트가 시간정보 구조체를 복제받는다.</div>
+          <div class="flow-item" data-step="2"><code>OnRep_PhaseTimerData()</code>에서 델리게이트를 Broadcast한다.</div>
+          <div class="flow-item" data-step="3">위젯은 델리게이트에 시간 갱신 함수를 바인딩한다.</div>
+          <div class="flow-item" data-step="4">위젯 내부에서 0.1초 간격의 로컬 타이머를 실행한다.</div>
+          <div class="flow-item" data-step="5">매 호출마다 서버 기준 현재 시간을 구해 남은 시간을 표시한다.</div>
+        </div>
+
+        <pre><code>float ATestGameState::GetRemainTime() const
+{
+    return FMath::Max(
+        0.0f,
+        PhaseTimerData.EndServerTime - GetServerWorldTimeSeconds()
+    );
+}</code></pre>
+
+        <div class="callout">
+          <strong>핵심:</strong>
+          남은 시간을 매 프레임 서버에서 전송하는 것이 아니다.
+          서버는 시작 시간·지속 시간·종료 시간만 복제하고,
+          클라이언트는 자신의 로컬 타이머로 화면을 갱신한다.
+        </div>
+
+        <h3>패킷 지연과 서버 시간</h3>
+        <p>
+          처음에는 시간정보 패킷이 늦게 도착하면 서버와 클라이언트의 시간이 크게 어긋날 것으로 생각했다.
+          하지만 <code>GetServerWorldTimeSeconds()</code>는 클라이언트에서
+          서버 시간과 로컬 시간의 차이를 보정한 추정값을 반환한다.
+        </p>
+        <p>
+          따라서 패킷이 늦게 도착하더라도 종료 시각에서 현재 서버 추정 시간을 빼면,
+          패킷이 이동하는 동안 이미 흐른 시간이 계산에 반영된다.
+        </p>
+
+        <div class="callout warning">
+          네트워크 지연, 프레임 지연, 패킷 손실 때문에 서버와 클라이언트의 시간이 완전히 일치하지는 않는다.
+          실제 상태 전환과 승패 판정은 반드시 서버가 담당하고,
+          클라이언트 계산값은 UI 표시용으로만 사용한다.
+        </div>
+      </section>
+
+      <section id="states">
+        <h2>3. GameState 상태 분기</h2>
+        <p>게임 진행 상태를 Enum으로 나누었다.</p>
+
+        <pre><code>UENUM(BlueprintType)
+enum class EGameState : uint8
+{
+    None,
+    Lobby,
+    Playing
+};</code></pre>
+
+        <p>
+          플레이어가 접속하면 <code>StartLobby()</code>를 호출한다.
+          이 함수에서 로비 상태와 시간정보 구조체를 설정하고,
+          서버의 상태 확인 타이머를 시작한다.
+        </p>
+
+        <pre><code>void ATestGameState::StartLobby()
+{
+    if (!HasAuthority()) return;
+
+    const float Now = GetServerWorldTimeSeconds();
+    const float LobbyDuration = 50.0f;
+
+    PhaseTimerData.GameStateEnum = EGameState::Lobby;
+    PhaseTimerData.StartServerTime = Now;
+    PhaseTimerData.Duration = LobbyDuration;
+    PhaseTimerData.EndServerTime = Now + LobbyDuration;
+
+    GetWorldTimerManager().SetTimer(
+        PhaseCheckTimerHandle,
+        this,
+        &ThisClass::CheckPhaseTime,
+        0.5f,
+        true
+    );
+}</code></pre>
+
+        <pre><code>void ATestGameState::CheckPhaseTime()
+{
+    if (!HasAuthority()) return;
+    if (GetRemainTime() > 0.0f) return;
+
+    switch (PhaseTimerData.GameStateEnum)
+    {
+    case EGameState::Lobby:
+        MoveToStage();
+        break;
+
+    case EGameState::Playing:
+        MoveToLobby();
+        break;
+
+    default:
+        break;
+    }
+}</code></pre>
+
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>상태</th>
+              <th>남은 시간이 0일 때</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="tag">Lobby</span></td>
+              <td><code>MoveToStage()</code> 실행</td>
+            </tr>
+            <tr>
+              <td><span class="tag">Playing</span></td>
+              <td><code>MoveToLobby()</code> 실행</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="combat">
+        <h2>4. 플레이어 전투정보 수집</h2>
+        <p>
+          Stage로 이동한 뒤에는 플레이어별 전투정보를 수집한다.
+          구조체에는 가한 피해, 받은 피해, 킬 수, 획득 아이템 수,
+          생존 시간, 점수, 순위 등을 저장한다.
+        </p>
+
+        <pre><code>USTRUCT(BlueprintType)
+struct FCollectCombatInfo
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    float DamageDealt = 0.0f;
+
+    UPROPERTY()
+    float DamageTaken = 0.0f;
+
+    UPROPERTY()
+    int32 KillCount = 0;
+
+    UPROPERTY()
+    int32 LootCount = 0;
+
+    UPROPERTY()
+    float SurviveTime = 0.0f;
+
+    UPROPERTY()
+    int32 Score = 0;
+
+    UPROPERTY()
+    int32 Rank = 0;
+};</code></pre>
+
+        <p>
+          <code>TakenDamage()</code>처럼 서버에서 실행되는 함수에서 피해량을 기록한다.
+          공격자의 PlayerState에는 가한 피해를, 피격자의 PlayerState에는 받은 피해를 누적한다.
+        </p>
+      </section>
+
+      <section id="problem">
+        <h2>5. Replicated 구조체를 직접 변경했을 때의 문제</h2>
+        <p>
+          처음에는 전투정보 구조체 자체를 <code>ReplicatedUsing</code>으로 선언하고,
+          데미지가 발생할 때마다 직접 값을 변경하려 했다.
+        </p>
+
+        <pre><code>UPROPERTY(ReplicatedUsing = OnRep_PlayerCombatInfo)
+FCollectCombatInfo PlayerCombatInfo;
+
+PlayerCombatInfo.DamageTaken += ActualDamage;</code></pre>
+
+        <p>
+          클라이언트에서는 <code>OnRep_PlayerCombatInfo()</code>에서 Broadcast하고,
+          UI가 이 델리게이트를 구독해 화면을 갱신하도록 만들 수 있다.
+        </p>
+
+        <pre><code>void APlayerCharacterState::OnRep_PlayerCombatInfo(
+    const FCollectCombatInfo&amp; OldCombatInfo)
+{
+    OnPlayerCombatInfoChanged.Broadcast();
+}</code></pre>
+
+        <div class="callout warning">
+          문제는 연발 사격과 다수의 플레이어다.
+          복제 대상 변수 자체를 매 타격마다 변경하면,
+          네트워크 복제 주기에 따라 변경된 구조체가 자주 전송될 수 있다.
+          단순히 UI Broadcast만 0.1초마다 제한해도 복제 변수의 변경은 이미 발생한 상태다.
+        </div>
+
+        <p>
+          Dirty Flag는 변경 여부를 확인하거나 불필요한 계산을 막는 데는 유용하지만,
+          이미 변경된 Replicated 변수의 네트워크 감지를 취소하지는 못한다.
+        </p>
+      </section>
+
+      <section id="snapshot">
+        <h2>6. 일반 데이터와 복제용 스냅샷 분리</h2>
+
+        <p>
+          복제 빈도를 제어하려면 실시간으로 누적되는 서버 전용 데이터와,
+          클라이언트에 전달할 복제용 데이터를 분리해야 한다.
+        </p>
+
+        <pre><code>// 서버에서 실시간으로 변경되는 원본
+UPROPERTY()
+FCollectCombatInfo RuntimeCombatInfo;
+
+// 클라이언트로 전달되는 복제용 스냅샷
+UPROPERTY(ReplicatedUsing = OnRep_PlayerCombatInfo)
+FCollectCombatInfo PlayerCombatInfo;
+
+// 마지막 스냅샷 이후 변경 여부
+bool bCombatInfoDirty = false;</code></pre>
+
+        <h3>전투 이벤트에서는 Runtime 데이터만 변경</h3>
+
+        <pre><code>void APlayerCharacterState::AddDamageTaken(float Damage)
+{
+    if (!HasAuthority()) return;
+
+    RuntimeCombatInfo.DamageTaken += Damage;
+    bCombatInfoDirty = true;
+}</code></pre>
+
+        <p>
+          데미지를 주거나 받고, 아이템을 획득하거나 생존 시간이 바뀔 때마다
+          <code>RuntimeCombatInfo</code>만 수정한다.
+          이 변수는 복제 대상이 아니므로 값이 자주 바뀌어도 직접적인 복제 패킷이 발생하지 않는다.
+        </p>
+
+        <h3>0.1초 타이머에서 Score와 Rank 계산</h3>
+
+        <p>
+          GameState의 0.1초 타이머 함수에서 각 PlayerState의 생존 시간과 점수를 계산한다.
+          점수 계산이 끝난 뒤 정렬하고 Rank를 지정한다.
+        </p>
+
+        <pre><code>void ATestGameState::CalculatePlayerRank()
+{
+    if (!HasAuthority()) return;
+
+    TArray&lt;APlayerCharacterState*&gt; Players;
+
+    for (APlayerCharacterState* State : LobbyPlayerStates)
+    {
+        if (!IsValid(State)) continue;
+        if (!State-&gt;GetIsParticipatedInThisRound()) continue;
+
+        State-&gt;UpdateSurviveTime();
+        State-&gt;CalculateCombatScore();
+        Players.Add(State);
+    }
+
+    Players.Sort(
+        [](const APlayerCharacterState&amp; A,
+           const APlayerCharacterState&amp; B)
+        {
+            return A.GetRuntimeCombatInfo().Score
+                 &gt; B.GetRuntimeCombatInfo().Score;
+        });
+
+    int32 CurrentRank = 1;
+
+    for (int32 Index = 0; Index &lt; Players.Num(); ++Index)
+    {
+        APlayerCharacterState* CurrentPS = Players[Index];
+        if (!IsValid(CurrentPS)) continue;
+
+        if (Index &gt; 0)
+        {
+            const APlayerCharacterState* PrevPS = Players[Index - 1];
+
+            if (IsValid(PrevPS) &amp;&amp;
+                CurrentPS-&gt;GetRuntimeCombatInfo().Score
+                &lt; PrevPS-&gt;GetRuntimeCombatInfo().Score)
+            {
+                CurrentRank = Index + 1;
+            }
+        }
+
+        CurrentPS-&gt;SetRuntimeRank(CurrentRank);
+    }
+
+    for (APlayerCharacterState* State : Players)
+    {
+        if (IsValid(State))
+        {
+            State-&gt;CommitCombatInfoSnapshot();
+        }
+    }
+}</code></pre>
+
+        <h3>계산이 끝난 뒤 복제용 구조체에 한 번 대입</h3>
+
+        <pre><code>void APlayerCharacterState::CommitCombatInfoSnapshot()
+{
+    if (!HasAuthority()) return;
+    if (!bCombatInfoDirty) return;
+
+    bCombatInfoDirty = false;
+    PlayerCombatInfo = RuntimeCombatInfo;
+
+    // Listen Server의 로컬 UI가 필요할 때 사용
+    OnPlayerCombatInfoChanged.Broadcast();
+
+    // 일반적으로는 다음 네트워크 갱신을 기다린다.
+    // ForceNetUpdate();
+}</code></pre>
+
+        <p>
+          Dedicated Server에서는 로컬 UI가 없기 때문에 서버 Broadcast가 실제 UI를 갱신하지 않는다.
+          클라이언트 UI는 복제 데이터가 도착한 뒤 <code>OnRep_PlayerCombatInfo()</code>에서 갱신된다.
+        </p>
+
+        <div class="callout success">
+          이 구조에서는 0.1초 동안 데미지 이벤트가 수십 번 발생해도
+          복제용 <code>PlayerCombatInfo</code>는 Commit 시점에 한 번만 변경된다.
+          전투 이벤트 횟수와 네트워크 스냅샷 갱신 횟수가 분리된다.
+        </div>
+
+        <table class="compare">
+          <thead>
+            <tr>
+              <th>방식</th>
+              <th>데미지 발생 시</th>
+              <th>복제 변수 변경</th>
+              <th>역할</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Replicated 변수 직접 수정</td>
+              <td>매 타격마다 수정</td>
+              <td>매 타격마다 가능</td>
+              <td>구현은 단순하지만 빈번한 변경 발생</td>
+            </tr>
+            <tr>
+              <td>Dirty Flag만 사용</td>
+              <td>매 타격마다 수정</td>
+              <td>이미 변경됨</td>
+              <td>계산 및 Broadcast 제어</td>
+            </tr>
+            <tr>
+              <td>Runtime + Snapshot</td>
+              <td>Runtime만 수정</td>
+              <td>0.1초 Commit 시 수정</td>
+              <td>복제 변수 변경 빈도 제어</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="final-flow">
+        <h2>7. 최종 동작 흐름</h2>
+
+        <div class="flow">
+          <div class="flow-item" data-step="1">데미지·킬·아이템 획득 이벤트가 서버에서 발생한다.</div>
+          <div class="flow-item" data-step="2"><code>RuntimeCombatInfo</code>에 실시간 데이터가 누적된다.</div>
+          <div class="flow-item" data-step="3"><code>bCombatInfoDirty</code>를 true로 변경한다.</div>
+          <div class="flow-item" data-step="4">GameState의 0.1초 타이머가 생존 시간과 Score를 계산한다.</div>
+          <div class="flow-item" data-step="5">Runtime Score를 기준으로 정렬하고 Rank를 지정한다.</div>
+          <div class="flow-item" data-step="6"><code>CommitCombatInfoSnapshot()</code>에서 복제용 구조체에 한 번 복사한다.</div>
+          <div class="flow-item" data-step="7">다음 네트워크 갱신에서 클라이언트가 스냅샷을 받는다.</div>
+          <div class="flow-item" data-step="8"><code>OnRep_PlayerCombatInfo()</code>가 Broadcast하고 UI를 갱신한다.</div>
+        </div>
+
+        <pre><code>전투 이벤트 여러 번
+        ↓
+RuntimeCombatInfo 실시간 누적
+        ↓
+0.1초 타이머
+        ↓
+SurviveTime / Score / Rank 계산
+        ↓
+PlayerCombatInfo = RuntimeCombatInfo
+        ↓
+Replication
+        ↓
+OnRep
+        ↓
+클라이언트 UI 갱신</code></pre>
+      </section>
+
+      <section id="learned">
+        <h2>8. 배운 점</h2>
+        <ul>
+          <li>서버는 상태 전환과 게임 판정을 담당하고, 클라이언트 타이머는 UI 표시용으로 사용한다.</li>
+          <li>남은 시간을 계속 복제하기보다 시작·종료 시각을 한 번 전달하고 로컬에서 계산하는 편이 효율적이다.</li>
+          <li><code>GetServerWorldTimeSeconds()</code>는 클라이언트에서도 서버 기준 시간을 추정할 수 있게 해준다.</li>
+          <li>Broadcast는 로컬 함수 호출이며, 그 자체가 네트워크 패킷을 전송하는 것은 아니다.</li>
+          <li>Dirty Flag만으로는 이미 변경된 Replicated 변수의 복제 감지를 막을 수 없다.</li>
+          <li>빈번하게 바뀌는 데이터는 서버 전용 Runtime 값과 복제용 Snapshot으로 분리할 수 있다.</li>
+          <li>점수를 먼저 계산한 뒤 정렬하고, 마지막에 Rank를 지정해야 한다.</li>
+          <li>0.1초마다 Commit한다고 해서 OnRep 도착 간격이 정확히 0.1초로 보장되는 것은 아니다. 실제 전송은 Actor의 네트워크 갱신 주기와 네트워크 상태의 영향을 받는다.</li>
+        </ul>
+      </section>
+
+      <p class="footer-note">
+        UE5 Multiplayer TIL · GameState Timer · Replication Snapshot
+      </p>
+    </main>
+  </div>
+</body>
+</html>
