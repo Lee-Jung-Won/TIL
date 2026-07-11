@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>언리얼 디버깅 TIL - GetName과 Actor Label</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #222;
+      --muted: #666;
+      --line: #e5e7eb;
+      --accent: #2563eb;
+      --code-bg: #1f2937;
+      --code-text: #f9fafb;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+      line-height: 1.75;
+    }
+
+    article {
+      max-width: 900px;
+      margin: 48px auto;
+      padding: 40px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 2rem;
+      line-height: 1.3;
+    }
+
+    h2 {
+      margin-top: 48px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 1.4rem;
+    }
+
+    h3 {
+      margin-top: 28px;
+      font-size: 1.1rem;
+      color: var(--accent);
+    }
+
+    p {
+      margin: 12px 0;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .note {
+      margin: 20px 0;
+      padding: 16px 18px;
+      background: #eff6ff;
+      border-left: 4px solid var(--accent);
+      border-radius: 10px;
+    }
+
+    pre {
+      margin: 18px 0;
+      padding: 18px;
+      background: var(--code-bg);
+      color: var(--code-text);
+      border-radius: 12px;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    code {
+      font-family: Consolas, Monaco, "Courier New", monospace;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 12px;
+      text-align: left;
+    }
+
+    th {
+      background: #f3f4f6;
+    }
+
+    ul {
+      padding-left: 1.4rem;
+    }
+
+    strong {
+      color: #111827;
+    }
+  </style>
+</head>
+<body>
+<article>
+  <h1>언리얼 디버깅 TIL: GetName()과 Actor Label 차이</h1>
+  <p class="lead">
+    맵에 배치된 CineCameraActor들을 태그로 수집한 뒤 이름 기준으로 정렬했지만,
+    예상과 다른 카메라가 선택되는 문제를 디버깅한 기록이다.
+  </p>
+
+  <section>
+    <h2>상황</h2>
+    <p>맵에는 <strong>CineCameraActor</strong>가 3개 배치되어 있고, 각각 같은 태그가 지정되어 있다.</p>
+    <p>코드에서는 맵에 있는 Actor 중 <code>LobbyMainCamera</code> 태그가 붙은 Actor를 수집해서 <code>FoundCameras</code> 배열에 넣고 있었다.</p>
+
+    <pre><code>UGameplayStatics::GetAllActorsWithTag(
+    GetWorld(),
+    TEXT("LobbyMainCamera"),
+    FoundCameras
+);
+
+FoundCameras.Sort([](const AActor&amp; A, const AActor&amp; B)
+{
+    return A.GetName() &lt; B.GetName();
+});</code></pre>
+
+    <p>필자는 배열이 다음 순서로 정렬될 것이라고 예상했다.</p>
+
+    <pre><code>CineCameraActor
+CineCameraActor2
+CineCameraActor3</code></pre>
+
+    <p>그래서 배열의 첫 번째 액터에 접근하면 SECTION 1을 비추는 카메라가 선택될 것이라고 생각했다.</p>
+  </section>
+
+  <section>
+    <h2>문제</h2>
+    <p>예상과 달리 SECTION 1을 보여줘야 할 카메라가 SECTION 2를 보여주고 있었다.</p>
+    <p>즉, 배열의 첫 번째 요소가 내가 생각한 <code>CineCameraActor</code>가 아니었다.</p>
+  </section>
+
+  <section>
+    <h2>디버깅 과정</h2>
+
+    <h3>1. 배열이 정상적으로 수집되었는지 확인</h3>
+    <p>먼저 <code>FoundCameras</code> 배열에 카메라들이 전부 들어오는지 확인했다.</p>
+    <p>태그 설정은 정상적이었고, 관련 Actor들도 정상적으로 수집되고 있었다.</p>
+
+    <h3>2. Actor 정보를 펼쳐보기</h3>
+    <p>디버깅 중 Actor 정보를 펼쳐보니 원인의 실마리가 보였다.</p>
+    <p>Actor에는 <strong>Label 이름</strong>과 <strong>Name 이름</strong>이 따로 존재했다.</p>
+
+    <div class="note">
+      <p><strong>핵심:</strong> 뷰포트나 월드 아웃라이너에서 보이는 이름은 <code>GetName()</code>의 이름이 아니다.</p>
+      <p>뷰포트에서 보이는 이름은 <strong>Actor Label</strong>이다.</p>
+    </div>
+
+    <h3>3. 정렬 기준 확인</h3>
+    <p>기존 코드는 <code>GetName()</code>을 기준으로 정렬하고 있었다.</p>
+    <p>그래서 월드 아웃라이너에서 보이는 순서와 실제 정렬 결과가 달라졌다.</p>
+  </section>
+
+  <section>
+    <h2>원인</h2>
+    <p>언리얼에는 Actor 이름과 관련해서 크게 두 가지 개념이 있다.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>구분</th>
+          <th>의미</th>
+          <th>사용처</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>GetName()</code></td>
+          <td>UObject의 내부 Object Name</td>
+          <td>객체 식별, 디버깅, 내부 참조</td>
+        </tr>
+        <tr>
+          <td><code>GetActorLabel()</code></td>
+          <td>에디터에서 보이는 Actor Label</td>
+          <td>월드 아웃라이너 표시 이름</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>예를 들어 월드 아웃라이너에는 다음처럼 보일 수 있다.</p>
+
+    <pre><code>CineCameraActor
+CineCameraActor2
+CineCameraActor3</code></pre>
+
+    <p>하지만 실제 <code>GetName()</code> 값은 다음처럼 다를 수 있다.</p>
+
+    <pre><code>CineCameraActor_1
+CineCameraActor_0
+CineCameraActor_3</code></pre>
+
+    <p>즉, Label 이름만 보고 정렬 결과를 예상하면 안 된다.</p>
+  </section>
+
+  <section>
+    <h2>해결</h2>
+    <p>에디터에서 보이는 이름 기준으로 정렬하고 싶다면 <code>GetName()</code> 대신 <code>GetActorLabel()</code>을 사용하면 된다.</p>
+
+    <pre><code>FoundCameras.Sort([](const AActor&amp; A, const AActor&amp; B)
+{
+    return A.GetActorLabel() &lt; B.GetActorLabel();
+});</code></pre>
+
+    <p>이렇게 수정하자 원하는 SECTION 1 구역을 비추는 카메라에 정상적으로 접근할 수 있었다.</p>
+  </section>
+
+  <section>
+    <h2>번외: GetName()은 언제 정해질까?</h2>
+    <p><code>GetName()</code>은 UObject가 생성될 때 정해지는 내부 이름이다.</p>
+    <p>CineCameraActor를 Place Actors 패널에서 드래그 앤 드롭해서 월드에 배치하면, 객체가 맵에 인스턴스화되는 순간 내부 Object Name이 정해진다.</p>
+    <p>그리고 같은 이름이 이미 존재하면 언리얼이 자동으로 고유한 숫자를 붙인다.</p>
+
+    <p>테스트 결과, Label 이름은 같아도 새로 만들거나 삭제 후 다시 만들면 <code>GetName()</code>의 숫자가 달라지는 것을 확인할 수 있었다.</p>
+
+    <div class="note">
+      <p>즉, <code>GetName()</code>은 사용자가 보는 이름이라기보다 객체가 생성될 때 정해지는 내부 식별 이름에 가깝다.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>정리</h2>
+    <ul>
+      <li>뷰포트와 월드 아웃라이너에 보이는 이름은 Actor Label이다.</li>
+      <li><code>GetName()</code>은 UObject의 내부 Object Name이다.</li>
+      <li>Label과 Name은 서로 다를 수 있다.</li>
+      <li>에디터 표시 이름 기준으로 정렬하려면 <code>GetActorLabel()</code>을 사용한다.</li>
+      <li>게임 로직을 <code>GetName()</code>에 의존해서 작성하는 것은 좋지 않다.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>현업에서 더 권장되는 방식</h2>
+    <p>카메라 순서처럼 게임 로직에 필요한 순서는 이름이 아니라 명시적인 데이터로 관리하는 편이 좋다.</p>
+
+    <ul>
+      <li><code>UPROPERTY(EditAnywhere) int32 Order</code></li>
+      <li>Gameplay Tag</li>
+      <li>Enum</li>
+      <li>Data Asset</li>
+      <li>배열에 직접 등록</li>
+    </ul>
+
+    <pre><code>UPROPERTY(EditAnywhere)
+int32 CameraOrder = 0;
+
+FoundCameras.Sort([](const AMyCameraActor&amp; A, const AMyCameraActor&amp; B)
+{
+    return A.CameraOrder &lt; B.CameraOrder;
+});</code></pre>
+
+    <p>이렇게 하면 에디터 이름 변경이나 객체 생성 순서와 상관없이 안정적으로 원하는 순서를 보장할 수 있다.</p>
+  </section>
+</article>
+</body>
+</html>
